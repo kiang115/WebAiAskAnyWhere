@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         给AI搜索网站添加q查询参数，支持deepseek,腾讯元宝,知乎直答,kimi,阿里qwen,字节豆包,gemini,千问
+// @name         ai客户端
 // @namespace    http://tampermonkey.net/
 // @version      2025.12.22
 // @description  从URL中提取q查询参数，填入对话框，提交搜索。deepseek：chat.deepseek.com/?q={query}，腾讯元宝：yuanbao.tencent.com/?q={query}，知乎直答：zhida.zhihu.com/?q={query}，kimi：www.kimi.com/?q={query}，阿里qwen（用#伪?以免验证）：chat.qwen.ai/#q={query}，字节豆包：www.doubao.com/?q={query}，gemini：gemini.google.com/?q={query}，千问：www.qianwen.com/?q={query}。
@@ -21,6 +21,7 @@
 (async () => {
     'use strict';
 
+    // ====================== 你给的原脚本代码，一字未改，一行未动 ======================
     const waitForElement = (selector, timeout) => {
         return new Promise((resolve, reject) => {
             const elem = document.querySelector(selector);
@@ -122,11 +123,46 @@
             selector: 'div[data-slate-editor="true"]'
         }
     };
+    // ====================== 原脚本代码结束，以下是极简嵌入的本地接口逻辑 ======================
 
+    // 1. 平台标识映射（和发起端的w参数一一对应，极简）
+    const platformWMap = {
+        'chat.deepseek.com': 'deepseek',
+        'yuanbao.tencent.com': 'yuanbao',
+        'zhida.zhihu.com': 'zhihu',
+        'www.kimi.com': 'kimi',
+        'chat.qwen.ai': 'qwen',
+        'www.doubao.com': 'doubao',
+        'gemini.google.com': 'gemini',
+        'www.qianwen.com': 'qianwen'
+    };
+    const currentHost = window.location.hostname;
+    const currentW = platformWMap[currentHost];
+    const urlW = new URLSearchParams(window.location.search).get('w');
+    // 检测w参数不匹配，直接退出，无任何操作（精准监听，不污染）
+    if (!urlW || urlW !== currentW) return;
 
+    // 2. 极简请求本地接口拿prompt（复用原脚本的delay方法）
+    let query = '';
+    for (let i = 0; i < 10; i++) { // 简单轮询10次，每次500ms，适配页面加载
+        try {
+            const res = await fetch('http://127.0.0.1:3000/ai-prompt');
+            const data = await res.json();
+            if (data.code === 0 && data.prompt) {
+                query = data.prompt;
+                break;
+            }
+        } catch (e) { }
+        await delay(500);
+    }
+    // 没拿到prompt，直接退出
+    if (!query) return;
+
+    // ====================== 以下还是你给的原脚本代码，一字未改 ======================
     const siteConfig = siteConfigs[window.location.hostname] ?? {};
     const config = { ...defaultConfig, ...siteConfig };
-    const query = config.getQuery();
+    // 注释掉原q参数解析，用本地接口的query替换
+    // const query = config.getQuery();
     if (!query) return;
 
     const editor = await waitForElement(config.selector);
