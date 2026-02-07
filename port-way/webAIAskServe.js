@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         网页上下文AI提问助手（极简本地接口版）
-// @version      3.3
-// @description  Alt+d触发，极简本地接口传参，URL仅拼w=平台标识，无任何多余逻辑
-// @author       你的原版+极简适配
+// @version      3.4
+// @description  Alt+d触发，极简本地接口传参，URL仅拼w=平台标识，千问特殊处理：直接拼接?q=prompt
+// @author       你的原版+极简适配+千问特殊处理
 // @match        *://*/*
 // @grant        none
 // @run-at       document-end
@@ -76,7 +76,7 @@
 
         const title = document.createElement('h3');
         title.style.cssText = 'margin: 0 0 15px 0; color: #333; font-size: 18px; font-weight: 600;';
-        title.textContent = 'AI极简提问助手 v3.3';
+        title.textContent = 'AI极简提问助手 v3.4';
         panel.appendChild(title);
 
         const aiMultiSelectWrapper = document.createElement('div');
@@ -235,11 +235,17 @@
         return { left, top };
     }
 
-    // 仅修改：打开窗口时拼w=平台标识，无其他改动
-    function openAIWindow(url, w, positionTracker) {
+    // 优化：支持千问的URL拼接逻辑
+    function openAIWindow(url, w, positionTracker, prompt = '') {
         const { width, height } = CONFIG.windowConfig;
         const { left, top } = calculateNextWindowPosition(positionTracker);
-        const finalUrl = `${url}?w=${w}`; // 仅拼w参数，极简！
+        let finalUrl = `${url}?w=${w}`; // 基础拼接w参数
+
+        // 如果是千问平台且有prompt，拼接?q参数
+        if (w === 'qianwen' && prompt) {
+            finalUrl = `${url}?q=${encodeURIComponent(prompt)}&w=${w}`;
+        }
+
         window.open(
             finalUrl,
             `AI_Assistant_Window_${Date.now()}`,
@@ -262,7 +268,7 @@
         }
     }
 
-    // 核心触发逻辑：仅加POST本地接口的逻辑，其余全是你的原版！
+    // 核心触发逻辑：新增千问特殊处理
     document.addEventListener('keydown', async function(e) {
         if (e.altKey && e.key.toLowerCase() === CONFIG.shortcutKey) {
             e.preventDefault();
@@ -278,21 +284,34 @@
             submitBtn.addEventListener('click', async () => {
                 const userQuery = questionInput.value.trim();
                 const promptText = buildPrompt(userQuery, currentUrl);
-                // 仅加：先POST到本地接口
-                const postOk = await postPromptToLocal(promptText);
-                if (!postOk) return;
-
                 const selectedAIIndices = Array.from(document.querySelectorAll('input[name="ai-platform"]:checked')).map(el => el.value);
                 const windowPositionTracker = {
                     lastLeft: window.screen.width - CONFIG.windowConfig.width - 10,
                     columnCount: 0,
                     rowCount: 0
                 };
-                // 遍历打开窗口，拼w参数
-                selectedAIIndices.forEach(idx => {
-                    const platform = CONFIG.aiPlatforms[idx];
-                    openAIWindow(platform.value, platform.w, windowPositionTracker);
-                });
+
+                // 分离千问平台和其他平台
+                const qianwenIndex = selectedAIIndices.find(idx => CONFIG.aiPlatforms[idx].w === 'qianwen');
+                const otherIndices = selectedAIIndices.filter(idx => CONFIG.aiPlatforms[idx].w !== 'qianwen');
+
+                // 1. 处理非千问平台：先POST接口，再打开窗口
+                if (otherIndices.length > 0) {
+                    const postOk = await postPromptToLocal(promptText);
+                    if (!postOk) return; // 接口失败则终止
+
+                    otherIndices.forEach(idx => {
+                        const platform = CONFIG.aiPlatforms[idx];
+                        openAIWindow(platform.value, platform.w, windowPositionTracker);
+                    });
+                }
+
+                // 2. 处理千问平台：跳过POST，直接拼接URL
+                if (qianwenIndex !== undefined) {
+                    const platform = CONFIG.aiPlatforms[qianwenIndex];
+                    openAIWindow(platform.value, platform.w, windowPositionTracker, promptText);
+                }
+
                 closePanel();
             });
 
@@ -302,6 +321,6 @@
         }
     }, true);
 
-    console.log('✅ AI极简提问助手 v3.3已加载（极简本地接口版）');
-    console.log('💡 触发：Alt+d | 退出：ESC | 仅拼w=平台标识，无任何多余逻辑');
+    console.log('✅ AI极简提问助手 v3.4已加载（极简本地接口版+千问特殊处理）');
+    console.log('💡 触发：Alt+d | 退出：ESC | 千问直接拼接?q=prompt，其他平台POST本地接口');
 })();
