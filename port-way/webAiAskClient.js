@@ -113,6 +113,9 @@
                 const data = await res.json();
                 if (data.code === 0 && data.prompt) {
                     query = data.prompt;
+                    console.log(i);
+                    console.log("次轮询成功");
+                    console.log(query);
                     break;
                 }
             } catch (e) {
