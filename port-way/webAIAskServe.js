@@ -4,11 +4,13 @@
 // @description  Alt+d触发，极简本地接口传参，URL仅拼w=平台标识，千问特殊处理；分组式模板+URL复选框控制+自动匹配
 // @author       原版+极简适配+千问特殊处理+分组式动态prompt匹配+URL复选框
 // @match        *://*/*
-// @grant        none
 // @run-at       document-end
+// @grant        GM_xmlhttpRequest
+// @connect      127.0.0.1
+// @connect      localhost
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     const CONFIG = {
@@ -348,14 +350,41 @@
             `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
         );
     }
-
+    // POST到本地接口（修复版）
+    async function postPromptToLocal(prompt) {
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: CONFIG.localApi,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                data: `prompt=${encodeURIComponent(prompt)}`,
+                onload: function (response) {
+                    resolve(true);
+                },
+                onerror: function (error) {
+                    alert('❌ 本地AI接口未启动，请先运行 node local-ai-server.js');
+                    resolve(false);
+                }
+            });
+        });
+    }
     // POST到本地接口（原版保留）
+    // POST到本地接口（仅修复代理问题，其余逻辑完全保留）
     async function postPromptToLocal(prompt) {
         try {
-            await fetch(CONFIG.localApi, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `prompt=${encodeURIComponent(prompt)}`
+            // 改用GM_xmlhttpRequest并开启绕过代理
+            await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'POST',          // 保持POST方法不变
+                    url: CONFIG.localApi,    // 保持原有地址不变
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, // 保持请求头不变
+                    data: `prompt=${encodeURIComponent(prompt)}`, // 保持请求体不变
+                    bypassProxy: true,       // 核心：强制绕过代理访问本地
+                    onload: () => resolve(), // 请求成功则resolve
+                    onerror: (err) => reject(err) // 请求失败则reject
+                });
             });
             return true;
         } catch (e) {
@@ -365,7 +394,7 @@
     }
 
     // 核心触发逻辑（原版保留，适配新的buildPrompt）
-    document.addEventListener('keydown', async function(e) {
+    document.addEventListener('keydown', async function (e) {
         if (e.altKey && e.key.toLowerCase() === CONFIG.shortcutKey) {
             e.preventDefault();
             e.stopPropagation();

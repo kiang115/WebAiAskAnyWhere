@@ -12,6 +12,9 @@
 // @match        https://www.doubao.com/*
 // @match        https://gemini.google.com/*
 // @run-at       document-start
+// @grant        GM_xmlhttpRequest
+// @connect      127.0.0.1
+// @connect      localhost
 // @license      MIT
 // @downloadURL https://update.greasyfork.org/scripts/550940/xxx.js
 // @updateURL https://update.greasyfork.org/scripts/550940/xxx.js
@@ -108,21 +111,31 @@
         // 2. 轮询本地接口获取prompt（原有逻辑保留）
         let query = '';
         for (let i = 0; i < 10; i++) {
-            try {
-                const res = await fetch('http://127.0.0.1:3000/ai-prompt');
-                const data = await res.json();
-                if (data.code === 0 && data.prompt) {
-                    query = data.prompt;
-                    console.log(i);
-                    console.log("次轮询成功");
-                    console.log(query);
-                    break;
-                }
-            } catch (e) {
-                console.debug('轮询本地接口失败：', e);
-            }
-            await delay(100);
+    try {
+        // 替换原fetch请求为GM_xmlhttpRequest，开启绕过代理
+        const res = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: 'http://127.0.0.1:3000/ai-prompt',
+                bypassProxy: true, // 核心：强制绕过代理
+                onload: (response) => resolve(response), // 请求成功返回响应
+                onerror: (err) => reject(err) // 请求失败抛出错误
+            });
+        });
+        // 注意：GM_xmlhttpRequest的响应体是responseText，需手动解析JSON
+        const data = JSON.parse(res.responseText);
+        if (data.code === 0 && data.prompt) {
+            query = data.prompt;
+            console.log(i);
+            console.log("次轮询成功");
+            console.log(query);
+            break;
         }
+    } catch (e) {
+        console.debug('轮询本地接口失败：', e);
+    }
+    await delay(100);
+}
         return query;
     };
 
